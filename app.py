@@ -3,13 +3,13 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 
-from loadcurve_engine_v22 import Config, TariffPeriod, generate, typical_day, monthly, ENGINE_VERSION
+from loadcurve_engine_v23 import Config, TariffPeriod, generate, typical_day, monthly, ENGINE_VERSION
 from loadcurve_export import to_csv, to_excel, to_png
 
 
 st.set_page_config(page_title="Courbe de charge HT/BT", page_icon="⚡", layout="wide")
 
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.0"
 
 # Empêche Streamlit de réutiliser une courbe générée avec une ancienne
 # version du moteur après une mise à jour du dépôt.
@@ -192,8 +192,34 @@ st.caption("Profil annuel théorique au pas de 15 minutes, calibré exactement s
 
 with st.sidebar:
     st.header("1. Données tarifaires & consommation")
-    annual_ht = st.number_input("Consommation annuelle haut tarif (kWh)", 0.0, value=16996.0, step=100.0)
-    annual_bt = st.number_input("Consommation annuelle bas tarif (kWh)", 0.0, value=7871.0, step=100.0)
+    input_mode_label = st.radio(
+        "Type de saisie",
+        ["Consommation annuelle", "Consommations mensuelles"],
+    )
+    input_mode = "annual" if input_mode_label == "Consommation annuelle" else "monthly"
+    month_names_full = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"]
+    monthly_ht_values = None
+    monthly_bt_values = None
+
+    if input_mode == "annual":
+        annual_ht = st.number_input("Consommation annuelle haut tarif (kWh)", 0.0, value=16996.0, step=100.0)
+        annual_bt = st.number_input("Consommation annuelle bas tarif (kWh)", 0.0, value=7871.0, step=100.0)
+    else:
+        monthly_ht_values = []
+        monthly_bt_values = []
+        st.caption("Renseigne les consommations HT et BT de chaque mois.")
+        for month_name in month_names_full:
+            st.markdown(f"**{month_name}**")
+            col_ht, col_bt = st.columns(2)
+            with col_ht:
+                ht_val = st.number_input(f"HT {month_name} (kWh)", min_value=0.0, value=1000.0, step=50.0, key=f"monthly_ht_{month_name}")
+            with col_bt:
+                bt_val = st.number_input(f"BT {month_name} (kWh)", min_value=0.0, value=500.0, step=50.0, key=f"monthly_bt_{month_name}")
+            monthly_ht_values.append(float(ht_val))
+            monthly_bt_values.append(float(bt_val))
+        annual_ht = float(sum(monthly_ht_values))
+        annual_bt = float(sum(monthly_bt_values))
+        st.info((f"Total HT : {annual_ht:,.0f} kWh/an\n\n" f"Total BT : {annual_bt:,.0f} kWh/an\n\n" f"Total : {annual_ht + annual_bt:,.0f} kWh/an").replace(",", " "))
     price_ht = st.number_input("Prix du kWh haut tarif (CHF)", 0.0, value=0.31, step=0.01, format="%.3f")
     price_bt = st.number_input("Prix du kWh bas tarif (CHF)", 0.0, value=0.21, step=0.01, format="%.3f")
     resale = st.number_input("Prix de revente (CHF/kWh) — optionnel", 0.0, value=0.08, step=0.01, format="%.3f")
@@ -260,7 +286,10 @@ if generate_btn:
         periods, weekdays_only, int(occupants), int(absent), departure,
         return_home, wake, bedtime, dinner, lunch, weekend_factor, base_kw,
         heat_pump, direct_heating, boiler, boiler_start, boiler_kwh,
-        ev, ev_start, ev_kwh, ev_power, ev_weekdays, variability
+        ev, ev_start, ev_kwh, ev_power, ev_weekdays, variability,
+        input_mode=input_mode,
+        monthly_ht_kwh=monthly_ht_values,
+        monthly_bt_kwh=monthly_bt_values,
     )
     try:
         with st.spinner("Génération du profil annuel..."):
