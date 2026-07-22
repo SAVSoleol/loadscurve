@@ -1,12 +1,20 @@
-# Générateur de courbe de charge HT/BT — saisonnalité mensuelle
+# Générateur de courbe de charge — répartition mensuelle corrigée
 
-Cette version ajoute une vraie répartition mensuelle en forme de U :
+Cette version impose réellement une répartition mensuelle cible.
 
-- consommation élevée en décembre et janvier ;
-- baisse progressive au printemps ;
+## Principe
+
+Le moteur utilise un équilibrage matriciel RAS/IPF afin de respecter simultanément :
+
+- le total de chaque mois ;
+- la consommation annuelle haut tarif ;
+- la consommation annuelle bas tarif.
+
+## Profil avec pompe à chaleur
+
+- maximum en décembre et janvier ;
+- baisse progressive de février à juillet ;
 - minimum en juillet ;
-- reprise dès septembre et octobre ;
-- saisonnalité plus forte avec chauffage électrique direct ;
-- saisonnalité modérée avec pompe à chaleur ;
-- totaux HT et BT toujours respectés exactement ;
-- graphique mensuel empilé : BT bleu, HT rouge.
+- remontée progressive d'août à décembre.
+
+Les totaux annuels HT et BT restent exacts.

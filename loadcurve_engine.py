@@ -190,119 +190,104 @@ def generate(cfg: Config) -> pd.DataFrame:
     ht = tariff_mask(index, cfg)
     base_energy = np.clip(power * 0.25, 1e-9, None)
 
-    raw_ht = float(base_energy[ht].sum())
-    raw_bt = float(base_energy[~ht].sum())
-
-    if cfg.annual_ht_kwh > 0 and raw_ht <= 0:
+    if cfg.annual_ht_kwh > 0 and not np.any(ht):
         raise ValueError("Aucune plage haut tarif n'est définie.")
-    if cfg.annual_bt_kwh > 0 and raw_bt <= 0:
+    if cfg.annual_bt_kwh > 0 and not np.any(~ht):
         raise ValueError("Aucune plage bas tarif n'est disponible.")
 
-    def smooth_binary_mask(mask: np.ndarray, radius: int = 6) -> np.ndarray:
-        """
-        Transforme le masque HT/BT en poids progressifs autour des changements de tarif.
-        radius=6 correspond à une transition d'environ 1 h 30.
-        """
-        weights = mask.astype(float)
-        if radius <= 0:
-            return weights
+    total_annual_target = cfg.annual_ht_kwh + cfg.annual_bt_kwh
 
-        kernel_x = np.arange(-radius, radius + 1, dtype=float)
-        sigma = max(radius / 2.2, 1.0)
-        kernel = np.exp(-0.5 * (kernel_x / sigma) ** 2)
-        kernel /= kernel.sum()
+    # Répartition mensuelle cible.
+    # Avec PAC : forme en U proche du graphique de référence.
+    # Avec chauffage direct : forme en U plus marquée.
+    # Sans chauffage électrique : profil plus régulier.
+    if cfg.direct_heating:
+        monthly_weights = np.array([
+            1.42, 1.24, 1.05, 0.82, 0.72, 0.57,
+            0.50, 0.57, 0.72, 0.94, 1.20, 1.48
+        ], dtype=float)
+    elif cfg.heat_pump:
+        monthly_weights = np.array([
+            1.30, 1.16, 1.00, 0.82, 0.76, 0.62,
+            0.55, 0.62, 0.76, 0.96, 1.18, 1.38
+        ], dtype=float)
+    else:
+        monthly_weights = np.array([
+            1.06, 0.97, 1.03, 0.99, 1.00, 0.98,
+            1.00, 1.00, 0.99, 1.01, 1.00, 1.04
+        ], dtype=float)
 
-        # Lissage circulaire par journée afin de garder la continuité autour de minuit.
-        out = np.zeros_like(weights)
-        day_count = len(weights) // 96
-        for day_idx in range(day_count):
-            start = day_idx * 96
-            end = start + 96
-            day = weights[start:end]
-            padded = np.concatenate([day[-radius:], day, day[:radius]])
-            smoothed = np.convolve(padded, kernel, mode="same")[radius:-radius]
-            out[start:end] = smoothed
-        return np.clip(out, 0.0, 1.0)
+    monthly_weights = monthly_weights / monthly_weights.sum()
+    monthly_targets = total_annual_target * monthly_weights
 
-    ht_weight = smooth_binary_mask(ht, radius=6)
-    bt_weight = 1.0 - ht_weight
+    # Matrice brute 12 mois x 2 tarifs (BT, HT).
+    raw_matrix = np.zeros((12, 2), dtype=float)
+    months = index.month.to_numpy()
 
-    # On cherche deux facteurs globaux a et b tels que :
-    # somme(base * correction * HT_mask) = cible HT
-    # somme(base * correction * BT_mask) = cible BT
-    # avec correction = a*poids_HT + b*poids_BT.
-    a11 = float((base_energy * ht_weight * ht).sum())
-    a12 = float((base_energy * bt_weight * ht).sum())
-    a21 = float((base_energy * ht_weight * (~ht)).sum())
-    a22 = float((base_energy * bt_weight * (~ht)).sum())
+    for month_num in range(1, 13):
+        month_mask = months == month_num
+        raw_matrix[month_num - 1, 0] = float(
+            base_energy[month_mask & (~ht)].sum()
+        )
+        raw_matrix[month_num - 1, 1] = float(
+            base_energy[month_mask & ht].sum()
+        )
 
-    matrix = np.array([[a11, a12], [a21, a22]], dtype=float)
-    targets = np.array([cfg.annual_ht_kwh, cfg.annual_bt_kwh], dtype=float)
+    # Évite les cellules nulles qui empêcheraient l'équilibrage.
+    raw_matrix = np.maximum(raw_matrix, 1e-12)
 
-    try:
-        factors = np.linalg.solve(matrix, targets)
-    except np.linalg.LinAlgError:
-        factors = np.array([
-            cfg.annual_ht_kwh / raw_ht if raw_ht else 0.0,
-            cfg.annual_bt_kwh / raw_bt if raw_bt else 0.0,
-        ])
+    column_targets = np.array(
+        [cfg.annual_bt_kwh, cfg.annual_ht_kwh],
+        dtype=float,
+    )
 
-    factor_ht, factor_bt = np.clip(factors, 0.0, None)
-    correction = factor_ht * ht_weight + factor_bt * bt_weight
-    energy = base_energy * correction
+    # RAS / IPF : équilibre simultanément
+    # - chaque total mensuel,
+    # - le total annuel BT,
+    # - le total annuel HT.
+    target_matrix = raw_matrix.copy()
 
-    # Correction finale très légère pour garantir exactement les deux totaux,
-    # sans recréer de rupture visible : on répartit l'écart proportionnellement
-    # à l'énergie déjà présente dans chaque zone tarifaire.
-    current_ht = float(energy[ht].sum())
-    current_bt = float(energy[~ht].sum())
+    for _ in range(500):
+        row_sums = target_matrix.sum(axis=1)
+        target_matrix *= (
+            monthly_targets / np.maximum(row_sums, 1e-12)
+        )[:, None]
 
-    if current_ht > 0:
-        energy[ht] *= cfg.annual_ht_kwh / current_ht
-    if current_bt > 0:
-        energy[~ht] *= cfg.annual_bt_kwh / current_bt
+        col_sums = target_matrix.sum(axis=0)
+        target_matrix *= (
+            column_targets / np.maximum(col_sums, 1e-12)
+        )[None, :]
 
-    # Lissage local de la puissance autour des frontières tarifaires.
-    power = energy / 0.25
-    boundary = np.flatnonzero(np.r_[False, ht[1:] != ht[:-1]])
+        row_error = np.max(
+            np.abs(target_matrix.sum(axis=1) - monthly_targets)
+        )
+        col_error = np.max(
+            np.abs(target_matrix.sum(axis=0) - column_targets)
+        )
+        if row_error < 1e-8 and col_error < 1e-8:
+            break
 
-    for idx_boundary in boundary:
-        left = max(0, idx_boundary - 4)
-        right = min(len(power), idx_boundary + 5)
-        if right - left < 3:
-            continue
+    # Application des facteurs à chaque cellule mois/tarif.
+    energy = base_energy.copy()
 
-        start_value = power[left]
-        end_value = power[right - 1]
-        blend = np.linspace(start_value, end_value, right - left)
-        original_sum_ht = float((power[left:right] * 0.25)[ht[left:right]].sum())
-        original_sum_bt = float((power[left:right] * 0.25)[~ht[left:right]].sum())
+    for month_num in range(1, 13):
+        month_mask = months == month_num
 
-        power[left:right] = 0.65 * power[left:right] + 0.35 * blend
+        bt_cell = month_mask & (~ht)
+        ht_cell = month_mask & ht
 
-        # Rééquilibrage local pour ne pas modifier la répartition tarifaire.
-        local_energy = power[left:right] * 0.25
-        local_ht = ht[left:right]
+        raw_bt_cell = float(base_energy[bt_cell].sum())
+        raw_ht_cell = float(base_energy[ht_cell].sum())
 
-        new_ht = float(local_energy[local_ht].sum())
-        new_bt = float(local_energy[~local_ht].sum())
+        if raw_bt_cell > 0:
+            energy[bt_cell] *= (
+                target_matrix[month_num - 1, 0] / raw_bt_cell
+            )
+        if raw_ht_cell > 0:
+            energy[ht_cell] *= (
+                target_matrix[month_num - 1, 1] / raw_ht_cell
+            )
 
-        if new_ht > 0 and original_sum_ht > 0:
-            local_energy[local_ht] *= original_sum_ht / new_ht
-        if new_bt > 0 and original_sum_bt > 0:
-            local_energy[~local_ht] *= original_sum_bt / new_bt
-
-        power[left:right] = local_energy / 0.25
-
-    energy = power * 0.25
-
-    # Garantie finale stricte après lissage.
-    final_ht = float(energy[ht].sum())
-    final_bt = float(energy[~ht].sum())
-    if final_ht > 0:
-        energy[ht] *= cfg.annual_ht_kwh / final_ht
-    if final_bt > 0:
-        energy[~ht] *= cfg.annual_bt_kwh / final_bt
     power = energy / 0.25
 
     tariff = np.where(ht, "HT", "BT")

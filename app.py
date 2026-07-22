@@ -467,7 +467,7 @@ with c:
         )
     )
     figm.update_layout(
-        title="Répartition mensuelle HT/BT",
+        title="Répartition mensuelle HT/BT — profil saisonnier",
         height=340,
         yaxis_title="kWh",
         barmode="stack",
