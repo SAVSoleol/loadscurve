@@ -1,9 +1,12 @@
-# Générateur de courbe de charge HT/BT — sans trous
+# Générateur de courbe de charge HT/BT — saisonnalité mensuelle
 
-Correction du graphique :
+Cette version ajoute une vraie répartition mensuelle en forme de U :
 
-- courbe continue de 00h00 à 24h00 ;
-- HT rouge et BT bleu ;
-- points de transition communs aux deux segments ;
-- suppression des espaces visibles aux changements tarifaires ;
-- calibration HT/BT lissée conservée.
+- consommation élevée en décembre et janvier ;
+- baisse progressive au printemps ;
+- minimum en juillet ;
+- reprise dès septembre et octobre ;
+- saisonnalité plus forte avec chauffage électrique direct ;
+- saisonnalité modérée avec pompe à chaleur ;
+- totaux HT et BT toujours respectés exactement ;
+- graphique mensuel empilé : BT bleu, HT rouge.

@@ -449,8 +449,31 @@ with a:
 with b:
     st.plotly_chart(full_day_chart(weekend, "Journée type — week-end", compact=True), use_container_width=True)
 with c:
-    figm = go.Figure(go.Bar(x=month["Mois_nom"], y=month["Total"], marker_color="#2e9d47"))
-    figm.update_layout(title="Répartition mensuelle (total)", height=340, yaxis_title="kWh", margin=dict(l=45,r=20,t=55,b=45))
+    figm = go.Figure()
+    figm.add_trace(
+        go.Bar(
+            x=month["Mois_nom"],
+            y=month["BT"],
+            name="Bas tarif (BT)",
+            marker_color="#3157ff",
+        )
+    )
+    figm.add_trace(
+        go.Bar(
+            x=month["Mois_nom"],
+            y=month["HT"],
+            name="Haut tarif (HT)",
+            marker_color="#ef2b2d",
+        )
+    )
+    figm.update_layout(
+        title="Répartition mensuelle HT/BT",
+        height=340,
+        yaxis_title="kWh",
+        barmode="stack",
+        legend=dict(orientation="h", y=1.12, x=0.35),
+        margin=dict(l=45, r=20, t=55, b=45),
+    )
     st.plotly_chart(figm, use_container_width=True)
 
 st.subheader("Exporter les données")

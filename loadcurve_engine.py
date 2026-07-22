@@ -108,17 +108,84 @@ def generate(cfg: Config) -> pd.DataFrame:
         intra = rng.normal(1.0, cfg.variability_pct / 220, 96)
         power[mask] = np.clip(template * daily * intra, 0.01, None)
 
+    # Saisonnalité mensuelle explicite.
+    # Les coefficients suivent une forme en U : consommation élevée en hiver,
+    # faible en été, comme sur le profil de référence fourni.
+    month_weights_heat_pump = {
+        1: 1.42,
+        2: 1.28,
+        3: 1.12,
+        4: 0.92,
+        5: 0.82,
+        6: 0.68,
+        7: 0.60,
+        8: 0.68,
+        9: 0.82,
+        10: 1.02,
+        11: 1.26,
+        12: 1.50,
+    }
+
+    month_weights_direct_heating = {
+        1: 1.58,
+        2: 1.38,
+        3: 1.16,
+        4: 0.86,
+        5: 0.72,
+        6: 0.54,
+        7: 0.48,
+        8: 0.54,
+        9: 0.70,
+        10: 1.00,
+        11: 1.34,
+        12: 1.70,
+    }
+
     if cfg.heat_pump or cfg.direct_heating:
-        doy = index.dayofyear.to_numpy()
-        cold = (1 + np.cos(2 * np.pi * (doy - 15) / 365.25)) / 2
-        hour = index.hour.to_numpy() + index.minute.to_numpy() / 60
-        occupied = np.where(
+        selected_weights = (
+            month_weights_direct_heating
+            if cfg.direct_heating
+            else month_weights_heat_pump
+        )
+
+        monthly_factor = np.array(
+            [selected_weights[int(month)] for month in index.month],
+            dtype=float,
+        )
+
+        # On applique la saisonnalité principalement à la partie variable
+        # de la charge, tout en conservant une charge de base stable.
+        stable_base = np.minimum(power, max(cfg.base_kw, 0.05))
+        variable_load = np.maximum(power - stable_base, 0.0)
+
+        hour = index.hour.to_numpy() + index.minute.to_numpy() / 60.0
+        occupied_factor = np.where(
             ((hour >= cfg.wake) & (hour <= cfg.departure))
             | ((hour >= cfg.return_home) & (hour <= cfg.bedtime)),
-            1.0, 0.55
+            1.0,
+            0.72,
         )
-        strength = 0.38 if cfg.direct_heating else 0.22
-        power += max(power.mean(), 0.1) * strength * cold * occupied
+
+        heating_share = 0.46 if cfg.direct_heating else 0.34
+        seasonal_multiplier = (
+            1.0
+            + heating_share
+            * occupied_factor
+            * (monthly_factor - 1.0)
+        )
+
+        power = stable_base + variable_load * seasonal_multiplier
+
+        # Ajout d'une charge spécifique au chauffage pour mieux marquer
+        # les mois froids, sans créer de pics artificiels.
+        heating_base = max(float(np.mean(power)), 0.1)
+        heating_extra = (
+            heating_base
+            * (0.34 if cfg.direct_heating else 0.22)
+            * np.maximum(monthly_factor - 0.60, 0.0)
+            * occupied_factor
+        )
+        power += heating_extra
 
     ht = tariff_mask(index, cfg)
     base_energy = np.clip(power * 0.25, 1e-9, None)
