@@ -1,20 +1,12 @@
-# Générateur de courbe de charge — répartition mensuelle corrigée
+# LoadCurves — version 2.1.0
 
-Cette version impose réellement une répartition mensuelle cible.
+Cette version corrige deux points :
 
-## Principe
+1. Une répartition mensuelle réellement imposée pour les logements avec pompe à chaleur.
+2. La réinitialisation automatique des anciennes données conservées dans `st.session_state`.
 
-Le moteur utilise un équilibrage matriciel RAS/IPF afin de respecter simultanément :
+Après le déploiement, la page doit afficher :
 
-- le total de chaque mois ;
-- la consommation annuelle haut tarif ;
-- la consommation annuelle bas tarif.
+`Version du moteur : 2.1.0-saisonnalite`
 
-## Profil avec pompe à chaleur
-
-- maximum en décembre et janvier ;
-- baisse progressive de février à juillet ;
-- minimum en juillet ;
-- remontée progressive d'août à décembre.
-
-Les totaux annuels HT et BT restent exacts.
+Il faut ensuite cliquer à nouveau sur **Générer la courbe**.

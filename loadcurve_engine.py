@@ -203,18 +203,19 @@ def generate(cfg: Config) -> pd.DataFrame:
     # Sans chauffage électrique : profil plus régulier.
     if cfg.direct_heating:
         monthly_weights = np.array([
-            1.42, 1.24, 1.05, 0.82, 0.72, 0.57,
-            0.50, 0.57, 0.72, 0.94, 1.20, 1.48
+            14.0, 12.0, 10.0, 7.5, 6.2, 4.8,
+            4.2, 4.8, 6.3, 8.8, 11.5, 14.9
         ], dtype=float)
     elif cfg.heat_pump:
+        # Parts mensuelles en %, proches du graphique de référence.
         monthly_weights = np.array([
-            1.30, 1.16, 1.00, 0.82, 0.76, 0.62,
-            0.55, 0.62, 0.76, 0.96, 1.18, 1.38
+            12.5, 11.0, 9.5, 7.8, 7.2, 5.8,
+            5.0, 5.7, 7.0, 9.0, 10.5, 13.0
         ], dtype=float)
     else:
         monthly_weights = np.array([
-            1.06, 0.97, 1.03, 0.99, 1.00, 0.98,
-            1.00, 1.00, 0.99, 1.01, 1.00, 1.04
+            8.8, 7.8, 8.5, 8.1, 8.3, 8.1,
+            8.3, 8.3, 8.2, 8.4, 8.3, 8.9
         ], dtype=float)
 
     monthly_weights = monthly_weights / monthly_weights.sum()

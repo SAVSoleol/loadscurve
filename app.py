@@ -9,6 +9,17 @@ from loadcurve_export import to_csv, to_excel, to_png
 
 st.set_page_config(page_title="Courbe de charge HT/BT", page_icon="⚡", layout="wide")
 
+APP_VERSION = "2.1.0-saisonnalite"
+
+# Empêche Streamlit de réutiliser une courbe générée avec une ancienne
+# version du moteur après une mise à jour du dépôt.
+if st.session_state.get("app_version") != APP_VERSION:
+    for key in [
+        "generated", "annual", "week", "weekend", "month", "year", "cfg"
+    ]:
+        st.session_state.pop(key, None)
+    st.session_state["app_version"] = APP_VERSION
+
 st.markdown("""
 <style>
 :root {
@@ -176,6 +187,7 @@ hr {
 """, unsafe_allow_html=True)
 
 st.title("Générateur de courbe de charge")
+st.caption(f"Version du moteur : {APP_VERSION}")
 st.caption("Profil annuel théorique au pas de 15 minutes, calibré exactement sur les consommations haut tarif et bas tarif.")
 
 with st.sidebar:
