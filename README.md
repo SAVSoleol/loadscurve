@@ -1,8 +1,8 @@
-# Générateur de courbe de charge HT/BT — version corrigée
+# Générateur de courbe de charge HT/BT — thème sombre
 
-Cette version renomme les modules internes afin d’éviter les conflits d’import sur Streamlit Cloud.
+Cette version corrige le fond blanc de la colonne latérale Streamlit.
 
-## Fichiers à déposer dans le dépôt GitHub
+## Fichiers à déposer dans GitHub
 
 - app.py
 - loadcurve_engine.py
@@ -10,7 +10,7 @@ Cette version renomme les modules internes afin d’éviter les conflits d’imp
 - loadcurve_export.py
 - requirements.txt
 
-Supprime les anciens fichiers `generator.py`, `profiles.py` et `export.py` du dépôt pour éviter toute confusion.
+Supprime ou remplace les anciennes versions avant le déploiement.
 
 ## Lancement local
 

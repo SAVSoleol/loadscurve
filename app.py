@@ -11,19 +11,167 @@ st.set_page_config(page_title="Courbe de charge HT/BT", page_icon="⚡", layout=
 
 st.markdown("""
 <style>
-.block-container {padding-top: 1.1rem; padding-bottom: 2rem;}
-h1, h2, h3 {letter-spacing: -0.02em;}
+:root {
+    color-scheme: dark;
+}
+
+/* Zone principale */
+.stApp {
+    background-color: #0e1117;
+    color: #f3f4f6;
+}
+
+.block-container {
+    padding-top: 1.1rem;
+    padding-bottom: 2rem;
+}
+
+h1, h2, h3 {
+    letter-spacing: -0.02em;
+    color: #f8fafc;
+}
+
+/* Sidebar entièrement sombre */
+section[data-testid="stSidebar"] {
+    background-color: #111827 !important;
+    border-right: 1px solid #263244;
+}
+
+section[data-testid="stSidebar"] > div {
+    background-color: #111827 !important;
+}
+
+section[data-testid="stSidebar"] * {
+    color: #f3f4f6;
+}
+
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 {
+    color: #ffffff !important;
+}
+
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span {
+    color: #e5e7eb;
+}
+
+/* Champs numériques et texte */
+section[data-testid="stSidebar"] div[data-baseweb="input"] > div,
+section[data-testid="stSidebar"] div[data-baseweb="base-input"],
+section[data-testid="stSidebar"] input {
+    background-color: #0b1220 !important;
+    color: #ffffff !important;
+    border-color: #374151 !important;
+}
+
+section[data-testid="stSidebar"] input::placeholder {
+    color: #9ca3af !important;
+}
+
+/* Selectbox */
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+    background-color: #0b1220 !important;
+    color: #ffffff !important;
+    border-color: #374151 !important;
+}
+
+section[data-testid="stSidebar"] div[data-baseweb="select"] svg {
+    fill: #e5e7eb !important;
+}
+
+/* Boutons +/- des champs numériques */
+section[data-testid="stSidebar"] button {
+    color: #f3f4f6;
+}
+
+section[data-testid="stSidebar"] button[kind="secondary"] {
+    background-color: #182234 !important;
+    border-color: #374151 !important;
+}
+
+/* Sliders */
+section[data-testid="stSidebar"] div[data-baseweb="slider"] div[role="slider"] {
+    background-color: #ef4444 !important;
+    border-color: #ef4444 !important;
+}
+
+section[data-testid="stSidebar"] div[data-baseweb="slider"] > div > div {
+    color: #f3f4f6 !important;
+}
+
+/* Checkbox */
+section[data-testid="stSidebar"] input[type="checkbox"] {
+    accent-color: #ef4444;
+}
+
+/* Bouton principal */
+section[data-testid="stSidebar"] button[kind="primary"] {
+    background-color: #ef4444 !important;
+    border-color: #ef4444 !important;
+    color: #ffffff !important;
+}
+
+section[data-testid="stSidebar"] button[kind="primary"]:hover {
+    background-color: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+
+/* Cartes métriques adaptées au thème sombre */
 div[data-testid="stMetric"] {
-    border: 1px solid #d9dce3;
+    border: 1px solid #374151;
     border-radius: 12px;
     padding: 14px;
-    background: white;
+    background-color: #151b26;
 }
-.metric-red div[data-testid="stMetric"] {border-color: #ef9a9a; background:#fff8f8;}
-.metric-blue div[data-testid="stMetric"] {border-color: #93c5fd; background:#f7fbff;}
-.metric-green div[data-testid="stMetric"] {border-color: #86efac; background:#f8fff9;}
-.metric-purple div[data-testid="stMetric"] {border-color: #d8b4fe; background:#fdf9ff;}
-section[data-testid="stSidebar"] {background:#fafbfc;}
+
+div[data-testid="stMetric"] label,
+div[data-testid="stMetric"] div {
+    color: #f3f4f6;
+}
+
+.metric-red div[data-testid="stMetric"] {
+    border-color: #7f1d1d;
+    background-color: #2a1518;
+}
+
+.metric-blue div[data-testid="stMetric"] {
+    border-color: #1e3a8a;
+    background-color: #111c35;
+}
+
+.metric-green div[data-testid="stMetric"] {
+    border-color: #166534;
+    background-color: #10251a;
+}
+
+.metric-purple div[data-testid="stMetric"] {
+    border-color: #6b21a8;
+    background-color: #24142f;
+}
+
+/* Boutons de téléchargement */
+div[data-testid="stDownloadButton"] button {
+    background-color: #151b26;
+    color: #f3f4f6;
+    border-color: #374151;
+}
+
+div[data-testid="stDownloadButton"] button:hover {
+    border-color: #64748b;
+    background-color: #1f2937;
+}
+
+/* Messages et séparateurs */
+div[data-testid="stAlert"] {
+    background-color: #151b26;
+    color: #f3f4f6;
+}
+
+hr {
+    border-color: #263244;
+}
 </style>
 """, unsafe_allow_html=True)
 
