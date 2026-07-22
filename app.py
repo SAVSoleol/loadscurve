@@ -3,13 +3,13 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 
-from loadcurve_engine import Config, TariffPeriod, generate, typical_day, monthly
+from loadcurve_engine_v22 import Config, TariffPeriod, generate, typical_day, monthly, ENGINE_VERSION
 from loadcurve_export import to_csv, to_excel, to_png
 
 
 st.set_page_config(page_title="Courbe de charge HT/BT", page_icon="⚡", layout="wide")
 
-APP_VERSION = "2.1.0-saisonnalite"
+APP_VERSION = "2.2.0"
 
 # Empêche Streamlit de réutiliser une courbe générée avec une ancienne
 # version du moteur après une mise à jour du dépôt.
@@ -187,7 +187,7 @@ hr {
 """, unsafe_allow_html=True)
 
 st.title("Générateur de courbe de charge")
-st.caption(f"Version du moteur : {APP_VERSION}")
+st.caption(f"Version application : {APP_VERSION} — Moteur chargé : {ENGINE_VERSION}")
 st.caption("Profil annuel théorique au pas de 15 minutes, calibré exactement sur les consommations haut tarif et bas tarif.")
 
 with st.sidebar:

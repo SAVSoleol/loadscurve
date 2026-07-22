@@ -1,12 +1,26 @@
-# LoadCurves — version 2.1.0
+# LoadCurves 2.2.0
 
-Cette version corrige deux points :
+Cette version force Streamlit Cloud à charger un nouveau module :
 
-1. Une répartition mensuelle réellement imposée pour les logements avec pompe à chaleur.
-2. La réinitialisation automatique des anciennes données conservées dans `st.session_state`.
+- `loadcurve_engine_v22.py`
 
-Après le déploiement, la page doit afficher :
+La répartition mensuelle est maintenant en forme de U pour tous les profils résidentiels :
 
-`Version du moteur : 2.1.0-saisonnalite`
+- janvier et décembre élevés ;
+- diminution régulière au printemps ;
+- minimum en juillet ;
+- remontée régulière à l'automne.
 
-Il faut ensuite cliquer à nouveau sur **Générer la courbe**.
+Après le déploiement, l'application doit afficher :
+
+`Version application : 2.2.0 — Moteur chargé : 2.2.0-courbe-mensuelle-U`
+
+## Fichiers à mettre dans GitHub
+
+- app.py
+- loadcurve_engine_v22.py
+- loadcurve_profiles.py
+- loadcurve_export.py
+- requirements.txt
+
+L'ancien fichier `loadcurve_engine.py` peut rester dans le dépôt : la nouvelle application ne l'importe plus.
