@@ -121,17 +121,121 @@ def generate(cfg: Config) -> pd.DataFrame:
         power += max(power.mean(), 0.1) * strength * cold * occupied
 
     ht = tariff_mask(index, cfg)
-    energy = power * 0.25
-    raw_ht = energy[ht].sum()
-    raw_bt = energy[~ht].sum()
+    base_energy = np.clip(power * 0.25, 1e-9, None)
+
+    raw_ht = float(base_energy[ht].sum())
+    raw_bt = float(base_energy[~ht].sum())
 
     if cfg.annual_ht_kwh > 0 and raw_ht <= 0:
         raise ValueError("Aucune plage haut tarif n'est définie.")
     if cfg.annual_bt_kwh > 0 and raw_bt <= 0:
         raise ValueError("Aucune plage bas tarif n'est disponible.")
 
-    energy[ht] *= cfg.annual_ht_kwh / raw_ht if raw_ht else 0
-    energy[~ht] *= cfg.annual_bt_kwh / raw_bt if raw_bt else 0
+    def smooth_binary_mask(mask: np.ndarray, radius: int = 6) -> np.ndarray:
+        """
+        Transforme le masque HT/BT en poids progressifs autour des changements de tarif.
+        radius=6 correspond à une transition d'environ 1 h 30.
+        """
+        weights = mask.astype(float)
+        if radius <= 0:
+            return weights
+
+        kernel_x = np.arange(-radius, radius + 1, dtype=float)
+        sigma = max(radius / 2.2, 1.0)
+        kernel = np.exp(-0.5 * (kernel_x / sigma) ** 2)
+        kernel /= kernel.sum()
+
+        # Lissage circulaire par journée afin de garder la continuité autour de minuit.
+        out = np.zeros_like(weights)
+        day_count = len(weights) // 96
+        for day_idx in range(day_count):
+            start = day_idx * 96
+            end = start + 96
+            day = weights[start:end]
+            padded = np.concatenate([day[-radius:], day, day[:radius]])
+            smoothed = np.convolve(padded, kernel, mode="same")[radius:-radius]
+            out[start:end] = smoothed
+        return np.clip(out, 0.0, 1.0)
+
+    ht_weight = smooth_binary_mask(ht, radius=6)
+    bt_weight = 1.0 - ht_weight
+
+    # On cherche deux facteurs globaux a et b tels que :
+    # somme(base * correction * HT_mask) = cible HT
+    # somme(base * correction * BT_mask) = cible BT
+    # avec correction = a*poids_HT + b*poids_BT.
+    a11 = float((base_energy * ht_weight * ht).sum())
+    a12 = float((base_energy * bt_weight * ht).sum())
+    a21 = float((base_energy * ht_weight * (~ht)).sum())
+    a22 = float((base_energy * bt_weight * (~ht)).sum())
+
+    matrix = np.array([[a11, a12], [a21, a22]], dtype=float)
+    targets = np.array([cfg.annual_ht_kwh, cfg.annual_bt_kwh], dtype=float)
+
+    try:
+        factors = np.linalg.solve(matrix, targets)
+    except np.linalg.LinAlgError:
+        factors = np.array([
+            cfg.annual_ht_kwh / raw_ht if raw_ht else 0.0,
+            cfg.annual_bt_kwh / raw_bt if raw_bt else 0.0,
+        ])
+
+    factor_ht, factor_bt = np.clip(factors, 0.0, None)
+    correction = factor_ht * ht_weight + factor_bt * bt_weight
+    energy = base_energy * correction
+
+    # Correction finale très légère pour garantir exactement les deux totaux,
+    # sans recréer de rupture visible : on répartit l'écart proportionnellement
+    # à l'énergie déjà présente dans chaque zone tarifaire.
+    current_ht = float(energy[ht].sum())
+    current_bt = float(energy[~ht].sum())
+
+    if current_ht > 0:
+        energy[ht] *= cfg.annual_ht_kwh / current_ht
+    if current_bt > 0:
+        energy[~ht] *= cfg.annual_bt_kwh / current_bt
+
+    # Lissage local de la puissance autour des frontières tarifaires.
+    power = energy / 0.25
+    boundary = np.flatnonzero(np.r_[False, ht[1:] != ht[:-1]])
+
+    for idx_boundary in boundary:
+        left = max(0, idx_boundary - 4)
+        right = min(len(power), idx_boundary + 5)
+        if right - left < 3:
+            continue
+
+        start_value = power[left]
+        end_value = power[right - 1]
+        blend = np.linspace(start_value, end_value, right - left)
+        original_sum_ht = float((power[left:right] * 0.25)[ht[left:right]].sum())
+        original_sum_bt = float((power[left:right] * 0.25)[~ht[left:right]].sum())
+
+        power[left:right] = 0.65 * power[left:right] + 0.35 * blend
+
+        # Rééquilibrage local pour ne pas modifier la répartition tarifaire.
+        local_energy = power[left:right] * 0.25
+        local_ht = ht[left:right]
+
+        new_ht = float(local_energy[local_ht].sum())
+        new_bt = float(local_energy[~local_ht].sum())
+
+        if new_ht > 0 and original_sum_ht > 0:
+            local_energy[local_ht] *= original_sum_ht / new_ht
+        if new_bt > 0 and original_sum_bt > 0:
+            local_energy[~local_ht] *= original_sum_bt / new_bt
+
+        power[left:right] = local_energy / 0.25
+
+    energy = power * 0.25
+
+    # Garantie finale stricte après lissage.
+    final_ht = float(energy[ht].sum())
+    final_bt = float(energy[~ht].sum())
+    if final_ht > 0:
+        energy[ht] *= cfg.annual_ht_kwh / final_ht
+    if final_bt > 0:
+        energy[~ht] *= cfg.annual_bt_kwh / final_bt
     power = energy / 0.25
 
     tariff = np.where(ht, "HT", "BT")

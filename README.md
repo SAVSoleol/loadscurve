@@ -1,8 +1,16 @@
-# Générateur de courbe de charge HT/BT — thème sombre
+# Générateur de courbe de charge HT/BT — calibration lissée
 
-Cette version corrige le fond blanc de la colonne latérale Streamlit.
+Cette version corrige les ruptures artificielles aux changements de tarif.
 
-## Fichiers à déposer dans GitHub
+## Modifications
+
+- calibration HT/BT progressive ;
+- transition lissée autour des changements de tarif ;
+- conservation exacte des consommations annuelles HT et BT ;
+- maintien du thème sombre ;
+- exports Excel, CSV et PNG.
+
+## Fichiers GitHub
 
 - app.py
 - loadcurve_engine.py
@@ -10,9 +18,7 @@ Cette version corrige le fond blanc de la colonne latérale Streamlit.
 - loadcurve_export.py
 - requirements.txt
 
-Supprime ou remplace les anciennes versions avant le déploiement.
-
-## Lancement local
+## Lancement
 
 ```bash
 pip install -r requirements.txt
