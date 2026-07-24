@@ -3,22 +3,25 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 
-from loadcurve_engine_v23 import Config, TariffPeriod, generate, typical_day, monthly, ENGINE_VERSION
-from loadcurve_export import to_csv, to_excel, to_png
+from loadcurves.engine import Config, TariffPeriod, generate, typical_day, monthly, ENGINE_VERSION
+from loadcurves.exports import to_csv, to_excel, to_png
+from loadcurves.charts import full_day_chart
 
 
 st.set_page_config(page_title="Courbe de charge HT/BT", page_icon="⚡", layout="wide")
 
-APP_VERSION = "2.3.0"
+APP_VERSION = "3.1.0"
 
 # Empêche Streamlit de réutiliser une courbe générée avec une ancienne
 # version du moteur après une mise à jour du dépôt.
-if st.session_state.get("app_version") != APP_VERSION:
+SESSION_VERSION = f"{APP_VERSION}-{ENGINE_VERSION}"
+
+if st.session_state.get("app_version") != SESSION_VERSION:
     for key in [
         "generated", "annual", "week", "weekend", "month", "year", "cfg"
     ]:
         st.session_state.pop(key, None)
-    st.session_state["app_version"] = APP_VERSION
+    st.session_state["app_version"] = SESSION_VERSION
 
 st.markdown("""
 <style>
@@ -188,6 +191,7 @@ hr {
 
 st.title("Générateur de courbe de charge")
 st.caption(f"Version application : {APP_VERSION} — Moteur chargé : {ENGINE_VERSION}")
+st.caption("Valeurs mensuelles par défaut : relevé 2025 fourni par Soleol.")
 st.caption("Profil annuel théorique au pas de 15 minutes, calibré exactement sur les consommations haut tarif et bas tarif.")
 
 with st.sidebar:
@@ -198,6 +202,8 @@ with st.sidebar:
     )
     input_mode = "annual" if input_mode_label == "Consommation annuelle" else "monthly"
     month_names_full = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"]
+    default_monthly_ht = [610.04, 466.24, 225.34, 171.41, 123.14, 77.06, 132.84, 115.85, 187.61, 374.2, 476.4, 688.5]
+    default_monthly_bt = [523.43, 458.08, 424.37, 248.18, 184.03, 228.44, 270.37, 322.3, 120.12, 243.15, 400.58, 533.42]
     monthly_ht_values = None
     monthly_bt_values = None
 
@@ -208,13 +214,27 @@ with st.sidebar:
         monthly_ht_values = []
         monthly_bt_values = []
         st.caption("Renseigne les consommations HT et BT de chaque mois.")
-        for month_name in month_names_full:
+        for month_index, month_name in enumerate(month_names_full):
             st.markdown(f"**{month_name}**")
             col_ht, col_bt = st.columns(2)
             with col_ht:
-                ht_val = st.number_input(f"HT {month_name} (kWh)", min_value=0.0, value=1000.0, step=50.0, key=f"monthly_ht_{month_name}")
+                ht_val = st.number_input(
+                    f"HT {month_name} (kWh)",
+                    min_value=0.0,
+                    value=float(default_monthly_ht[month_index]),
+                    step=10.0,
+                    format="%.2f",
+                    key=f"monthly_ht_{month_name}",
+                )
             with col_bt:
-                bt_val = st.number_input(f"BT {month_name} (kWh)", min_value=0.0, value=500.0, step=50.0, key=f"monthly_bt_{month_name}")
+                bt_val = st.number_input(
+                    f"BT {month_name} (kWh)",
+                    min_value=0.0,
+                    value=float(default_monthly_bt[month_index]),
+                    step=10.0,
+                    format="%.2f",
+                    key=f"monthly_bt_{month_name}",
+                )
             monthly_ht_values.append(float(ht_val))
             monthly_bt_values.append(float(bt_val))
         annual_ht = float(sum(monthly_ht_values))
@@ -232,11 +252,12 @@ with st.sidebar:
     if second:
         h2s = st.slider("Début HT 2", 0.0, 23.75, 17.0, 0.25)
         h2e = st.slider("Fin HT 2", 0.25, 24.0, 23.0, 0.25)
-    weekdays_only = st.selectbox(
+    tariff_days = st.selectbox(
         "Jours concernés par le haut tarif",
-        ["Lundi à vendredi", "Tous les jours"],
+        ["Tous les jours", "Lundi à vendredi"],
         index=0,
-    ) == "Lundi à vendredi"
+    )
+    weekdays_only = tariff_days == "Lundi à vendredi"
 
     st.header("2. Occupation du bâtiment")
     occupants = st.number_input("Combien de personnes vivent dans le bâtiment ?", 1, 20, 4)
@@ -315,141 +336,6 @@ weekend = st.session_state.weekend
 month = st.session_state.month
 cfg = st.session_state.cfg
 
-def full_day_chart(df, title, compact=False):
-    """
-    Affiche une courbe continue de 00h00 à 24h00.
-    Les segments HT et BT partagent les points de transition afin
-    d'éviter tout espace vide entre les couleurs.
-    """
-    all_times = [
-        f"{h:02d}:{m:02d}"
-        for h in range(24)
-        for m in (0, 15, 30, 45)
-    ]
-
-    lookup = (
-        df.groupby("Heure")
-        .agg(
-            Puissance_kW=("Puissance_kW", "sum"),
-            Tarif=("Tarif", "first"),
-        )
-        .reindex(all_times)
-    )
-
-    lookup["Puissance_kW"] = (
-        lookup["Puissance_kW"]
-        .interpolate(limit_direction="both")
-        .fillna(0.0)
-    )
-    lookup["Tarif"] = lookup["Tarif"].ffill().bfill().fillna("BT")
-
-    # Point final 24h00 identique à 00h00.
-    x_values = list(range(97))
-    y_values = lookup["Puissance_kW"].tolist() + [
-        float(lookup.iloc[0]["Puissance_kW"])
-    ]
-    tariff_values = lookup["Tarif"].tolist() + [
-        str(lookup.iloc[0]["Tarif"])
-    ]
-
-    fig = go.Figure()
-
-    styles = {
-        "HT": {
-            "line": "#ef2b2d",
-            "fill": "rgba(239,43,45,0.15)",
-            "zone": "rgba(239,43,45,0.075)",
-            "label": "Haut tarif (HT)",
-        },
-        "BT": {
-            "line": "#3157ff",
-            "fill": "rgba(49,87,255,0.11)",
-            "zone": "rgba(49,87,255,0.045)",
-            "label": "Bas tarif (BT)",
-        },
-    }
-
-    # Blocs tarifaires continus.
-    blocks = []
-    block_start = 0
-    for i in range(1, len(tariff_values)):
-        if tariff_values[i] != tariff_values[i - 1]:
-            blocks.append((block_start, i - 1, tariff_values[i - 1]))
-            block_start = i
-    blocks.append((block_start, len(tariff_values) - 1, tariff_values[-1]))
-
-    legend_seen = set()
-
-    for block_index, (block_start, block_end, tariff) in enumerate(blocks):
-        style = styles[tariff]
-
-        # Inclusion du point voisin aux frontières : le segment bleu et
-        # le segment rouge se rejoignent exactement au même endroit.
-        draw_start = block_start - 1 if block_index > 0 else block_start
-        draw_end = block_end + 1 if block_index < len(blocks) - 1 else block_end
-        draw_start = max(0, draw_start)
-        draw_end = min(96, draw_end)
-
-        fig.add_trace(
-            go.Scatter(
-                x=x_values[draw_start:draw_end + 1],
-                y=y_values[draw_start:draw_end + 1],
-                mode="lines",
-                name=style["label"],
-                legendgroup=tariff,
-                showlegend=tariff not in legend_seen,
-                line=dict(color=style["line"], width=2.4),
-                fill="tozeroy",
-                fillcolor=style["fill"],
-                connectgaps=True,
-                hovertemplate="%{y:.2f} kW<extra>"
-                + style["label"]
-                + "</extra>",
-            )
-        )
-        legend_seen.add(tariff)
-
-    # Fonds tarifaires.
-    for block_start, block_end, tariff in blocks:
-        if block_start >= 96:
-            continue
-        fig.add_vrect(
-            x0=block_start,
-            x1=min(block_end + 1, 96),
-            fillcolor=styles[tariff]["zone"],
-            line_width=0,
-            layer="below",
-        )
-
-    ticks = list(range(0, 97, 8))
-    labels = [
-        f"{hour:02d}:00"
-        for hour in range(0, 24, 2)
-    ] + ["24:00"]
-
-    fig.update_layout(
-        title=title,
-        height=340 if compact else 520,
-        xaxis=dict(
-            title="Heure",
-            range=[0, 96],
-            tickmode="array",
-            tickvals=ticks,
-            ticktext=labels,
-        ),
-        yaxis=dict(
-            title="Puissance (kW)",
-            rangemode="tozero",
-        ),
-        hovermode="x unified",
-        legend=dict(
-            orientation="h",
-            y=1.12,
-            x=0.68,
-        ),
-        margin=dict(l=45, r=20, t=70, b=45),
-    )
-    return fig
 
 st.plotly_chart(
     full_day_chart(week, "Journée type (semaine) — profil de consommation"),
